@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify scripts are in sync
+        run: make verify-sync
+
+      - name: Test standalone script
+        run: python3 zai_quota.py --help
+
+      - name: Test skill entrypoint
+        run: python3 skills/zai-quota/scripts/check_quota.py --help
+
+      - name: Test skill discovery
+        run: |
+          npm install -g @vercel-labs/skills
+          skills add . --list
+
+      - name: Build package
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv build

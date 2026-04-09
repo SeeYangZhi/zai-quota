@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zai-quota"
+version = "1.0.0"
+description = "Check Z.ai (Zhipu AI) GLM API usage quota, remaining sessions, and token limits."
+readme = "README.md"
+license = "MIT"
+license-files = { paths = ["LICENSE"] }
+requires-python = ">=3.6"
+authors = [
+    { name = "Yang Zhi See", email = "hello@yangzhi.dev" },
+]
+keywords = ["zai", "zhipu", "glm", "quota", "api", "monitoring"]
+classifiers = [
+    "Environment :: Console",
+    "Programming Language :: Python :: 3",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+
+[project.scripts]
+zai-quota = "zai_quota:main"
+
+[project.urls]
+Homepage = "https://github.com/SeeYangZhi/zai-quota"
+Repository = "https://github.com/SeeYangZhi/zai-quota"

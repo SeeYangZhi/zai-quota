@@ -4,6 +4,7 @@ Check your [Z.ai](https://z.ai) (Zhipu AI / 智谱AI) GLM API usage quota, remai
 
 - **Standalone CLI:** Single Python file, zero dependencies
 - **Agent Skill:** Install across 45+ AI agents via `npx skills`
+- **Python Tool:** Install via `uvx` or `pip`
 
 ## Quick Start
 
@@ -21,6 +22,17 @@ npx skills add SeeYangZhi/zai-quota
 ```
 
 Works with Claude Code, Codex, OpenCode, Cursor, Windsurf, Gemini CLI, and [45+ agents](https://skills.sh).
+
+### As a Python tool
+
+```bash
+# With uv
+uvx zai-quota
+
+# With pip
+pip install zai-quota
+zai-quota
+```
 
 ---
 
@@ -100,6 +112,7 @@ Calls the Z.ai monitoring API to fetch your current quota usage. Supports two en
 
 ```
 ├── zai_quota.py               # Standalone script (root-level)
+├── pyproject.toml             # uv/pip packaging
 ├── skills/
 │   └── zai-quota/
 │       ├── SKILL.md           # Agent Skills spec
@@ -107,6 +120,15 @@ Calls the Z.ai monitoring API to fetch your current quota usage. Supports two en
 │           └── check_quota.py # Skill entrypoint
 ├── README.md
 └── LICENSE
+```
+
+## For maintainers
+
+```bash
+make sync          # Copy zai_quota.py into skills/zai-quota/scripts/
+make verify-sync   # CI check that both copies are identical
+make build         # uv build
+make publish       # uv build + uv publish to PyPI
 ```
 
 ## License
