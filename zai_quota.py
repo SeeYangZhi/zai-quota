@@ -244,6 +244,7 @@ def print_models(models_data: dict, plan: str = ""):
         print(f"  {len(accessible)} accessible on your plan, {len(not_accessible)} require upgrade")
     else:
         print("  * Not returned by /v4/models API, known from plan")
+    print("  ! Model access based on z.ai/subscribe, may differ from actual")
 
     return models
 
