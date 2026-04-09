@@ -38,14 +38,17 @@ AUTH_FILE = Path.home() / ".hermes" / "auth.json"
 PLAN_MODELS = {
     "lite": {
         "GLM-5.1", "GLM-5-Turbo", "GLM-4.7", "GLM-4.6", "GLM-4.5-Air",
+        "GLM-4.6V",
     },
     "standard": {  # Pro
         "GLM-5.1", "GLM-5-Turbo", "GLM-4.7", "GLM-4.6", "GLM-4.5-Air",
         "GLM-5", "GLM-5-Code", "GLM-4.5",
+        "GLM-4.6V", "GLM-5V-Turbo",
     },
     "pro": {  # Max
         "GLM-5.1", "GLM-5-Turbo", "GLM-4.7", "GLM-4.6", "GLM-4.5-Air",
-        "GLM-5", "GLM-5-Code", "GLM-4.5", "GLM-5V-Turbo", "GLM-4.6V",
+        "GLM-5", "GLM-5-Code", "GLM-4.5",
+        "GLM-4.6V", "GLM-5V-Turbo",
     },
 }
 
@@ -154,18 +157,11 @@ def build_model_list(models_data: dict, plan: str = "") -> list:
         api_ids.add(mid.lower())
         models.append({"id": mid, "object": "model", "created": m.get("created"), "source": "api"})
 
-    # Add models from plan that the API didn't return
-    plan_key = plan.lower() if plan else ""
+    # Add all known models that the API didn't return
     allowed = set()
     for pk in PLAN_MODELS:
         for m in PLAN_MODELS[pk]:
             allowed.add(m.lower())
-        if pk == plan_key:
-            break
-    if not plan_key:
-        for pk in PLAN_MODELS:
-            for m in PLAN_MODELS[pk]:
-                allowed.add(m.lower())
 
     for mid_lower in allowed:
         if mid_lower not in api_ids:
