@@ -33,21 +33,15 @@ MODELS_ENDPOINTS = {
 
 AUTH_FILE = Path.home() / ".hermes" / "auth.json"
 
-# Known model tiers (latest known as of 2026-04)
-MODEL_TIERS = {
-    "glm-4":         "4",
-    "glm-4-air":     "4",
-    "glm-4-airx":    "4",
-    "glm-4-flash":   "4",
-    "glm-4-long":    "4",
-    "glm-4-plus":    "4",
-    "glm-4.5":       "4.5",
-    "glm-4.5-air":   "4.5",
-    "glm-4.6":       "4.6",
-    "glm-4.7":       "4.7",
-    "glm-5":         "5",
-    "glm-5-turbo":   "5",
-    "glm-5.1":       "5.1",
+# Models known to exist on Z.ai but sometimes missing from /v4/models
+# Updated as of 2026-04
+KNOWN_MODELS = {
+    # Chat / Coding
+    "glm-4-plus",
+    "glm-5-code",
+    # Vision
+    "glm-4.6v",
+    "glm-5v-turbo",
 }
 
 
@@ -146,45 +140,54 @@ def pct_status(pct: int) -> str:
         return "red"
 
 
-def model_tier_label(model_id: str) -> str:
-    """Return a human-readable tier label for a model ID."""
-    return MODEL_TIERS.get(model_id, "??")
+def build_model_list(models_data: dict) -> list:
+    """Merge API-returned models with known models the API may hide."""
+    api_ids = set()
+    models = []
+    for m in models_data.get("data", []):
+        mid = m.get("id", "")
+        api_ids.add(mid)
+        models.append(m)
+
+    for mid in KNOWN_MODELS:
+        if mid not in api_ids:
+            models.append({"id": mid, "object": "model", "created": None, "source": "known"})
+
+    return models
 
 
 def print_models(models_data: dict):
     """Print supported models in a human-readable table."""
-    models = models_data.get("data", [])
+    models = build_model_list(models_data)
     if not models:
         print("  No models found.")
-        return
+        return []
 
-    # Sort by tier (newest first), then alphabetically
-    def sort_key(m):
-        mid = m.get("id", "")
-        return model_tier_label(mid)
-
-    models_sorted = sorted(models, key=sort_key)
+    # Sort alphabetically (newer models naturally come first due to naming)
+    models.sort(key=lambda m: m.get("id", ""))
 
     print("  Z.ai GLM Models")
-    print("  " + "-" * 37)
+    print("  " + "-" * 40)
 
-    for m in models_sorted:
+    for m in models:
         mid = m.get("id", "unknown")
+        source = m.get("source")
         created = m.get("created")
+        tag = ""
+        if source == "known":
+            tag = " *"
         date_str = ""
         if created:
             try:
                 date_str = datetime.fromtimestamp(created, tz=SGT).strftime("%Y-%m-%d")
             except (OSError, ValueError):
                 pass
-        print(f"    {mid:<20} {date_str}")
+        print(f"    {mid:<20} {date_str}{tag}")
 
     print(f"\n  Total: {len(models)} models")
+    print("  * Not returned by /v4/models API, found via probe")
 
-    # Try quick-access test for each model
-    print("\n  Quick availability check...")
-    print("  " + "-" * 37)
-    return models_sorted
+    return models
 
 
 def quick_test_models(api_key: str, models: list, endpoint: Optional[str] = None):
@@ -310,11 +313,14 @@ def main():
     if args.models:
         data = fetch_json(api_key, MODELS_ENDPOINTS, args.endpoint)
         if args.json:
-            print(json.dumps(data, indent=2))
+            # Merge known models into JSON output too
+            merged = build_model_list(data)
+            print(json.dumps(merged, indent=2))
         else:
             models = print_models(data)
             if models:
-                print()
+                print("\n  Quick availability check...")
+                print("  " + "-" * 40)
                 quick_test_models(api_key, models, args.endpoint)
     else:
         data = fetch_json(api_key, QUOTA_ENDPOINTS, args.endpoint)
