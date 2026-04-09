@@ -33,15 +33,20 @@ MODELS_ENDPOINTS = {
 
 AUTH_FILE = Path.home() / ".hermes" / "auth.json"
 
-# Models known to exist on Z.ai but sometimes missing from /v4/models
+# Plan-to-model mapping from https://z.ai/subscribe
 # Updated as of 2026-04
-KNOWN_MODELS = {
-    # Chat / Coding
-    "glm-4-plus",
-    "glm-5-code",
-    # Vision
-    "glm-4.6v",
-    "glm-5v-turbo",
+PLAN_MODELS = {
+    "lite": {
+        "GLM-5.1", "GLM-5-Turbo", "GLM-4.7", "GLM-4.6", "GLM-4.5-Air",
+    },
+    "standard": {  # Pro
+        "GLM-5.1", "GLM-5-Turbo", "GLM-4.7", "GLM-4.6", "GLM-4.5-Air",
+        "GLM-5", "GLM-5-Code", "GLM-4.5",
+    },
+    "pro": {  # Max
+        "GLM-5.1", "GLM-5-Turbo", "GLM-4.7", "GLM-4.6", "GLM-4.5-Air",
+        "GLM-5", "GLM-5-Code", "GLM-4.5", "GLM-5V-Turbo", "GLM-4.6V",
+    },
 }
 
 
@@ -140,109 +145,111 @@ def pct_status(pct: int) -> str:
         return "red"
 
 
-def build_model_list(models_data: dict) -> list:
-    """Merge API-returned models with known models the API may hide."""
+def build_model_list(models_data: dict, plan: str = "") -> list:
+    """Merge API-returned models with plan-based model list."""
     api_ids = set()
     models = []
     for m in models_data.get("data", []):
         mid = m.get("id", "")
-        api_ids.add(mid)
-        models.append(m)
+        api_ids.add(mid.lower())
+        models.append({"id": mid, "object": "model", "created": m.get("created"), "source": "api"})
 
-    for mid in KNOWN_MODELS:
-        if mid not in api_ids:
-            models.append({"id": mid, "object": "model", "created": None, "source": "known"})
+    # Add models from plan that the API didn't return
+    plan_key = plan.lower() if plan else ""
+    allowed = set()
+    for pk in PLAN_MODELS:
+        for m in PLAN_MODELS[pk]:
+            allowed.add(m.lower())
+        if pk == plan_key:
+            break
+    if not plan_key:
+        for pk in PLAN_MODELS:
+            for m in PLAN_MODELS[pk]:
+                allowed.add(m.lower())
+
+    for mid_lower in allowed:
+        if mid_lower not in api_ids:
+            models.append({"id": mid_lower, "object": "model", "created": None, "source": "plan"})
 
     return models
 
 
-def print_models(models_data: dict):
-    """Print supported models in a human-readable table."""
-    models = build_model_list(models_data)
+def print_models(models_data: dict, plan: str = ""):
+    """Print supported models grouped by access status."""
+    models = build_model_list(models_data, plan)
     if not models:
         print("  No models found.")
-        return []
+        return
 
-    # Sort alphabetically (newer models naturally come first due to naming)
-    models.sort(key=lambda m: m.get("id", ""))
+    # Determine which models the current plan grants
+    plan_key = plan.lower() if plan else ""
+    plan_set = set()
+    if plan_key and plan_key in PLAN_MODELS:
+        plan_set = PLAN_MODELS[plan_key]
 
-    print("  Z.ai GLM Models")
+    # Sort alphabetically
+    models.sort(key=lambda m: m.get("id", "").lower())
+
+    plan_map = {"lite": "Lite", "standard": "Pro", "pro": "Max"}
+    plan_label = plan_map.get(plan_key, plan or "Unknown")
+
+    print(f"  Z.ai GLM Models")
+    print(f"  Plan: {plan_label}")
     print("  " + "-" * 40)
 
-    for m in models:
-        mid = m.get("id", "unknown")
-        source = m.get("source")
-        created = m.get("created")
-        tag = ""
-        if source == "known":
-            tag = " *"
-        date_str = ""
-        if created:
-            try:
-                date_str = datetime.fromtimestamp(created, tz=SGT).strftime("%Y-%m-%d")
-            except (OSError, ValueError):
-                pass
-        print(f"    {mid:<20} {date_str}{tag}")
-
-    print(f"\n  Total: {len(models)} models")
-    print("  * Not returned by /v4/models API, found via probe")
-
-    return models
-
-
-def quick_test_models(api_key: str, models: list, endpoint: Optional[str] = None):
-    """Test each model with a minimal chat completion request."""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
-
-    base_url = None
-    if endpoint == "cn":
-        base_url = "https://open.bigmodel.cn/api/paas/v4"
-    elif endpoint == "intl":
-        base_url = "https://api.z.ai/api/paas/v4"
-    else:
-        base_url = "https://api.z.ai/api/paas/v4"
-
+    accessible = []
+    not_accessible = []
     for m in models:
         mid = m.get("id", "")
-        try:
-            req_body = json.dumps({
-                "model": mid,
-                "messages": [{"role": "user", "content": "hi"}],
-                "max_tokens": 1,
-            }).encode()
-            url = f"{base_url}/chat/completions"
-            req = urllib.request.Request(url, data=req_body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                resp_data = json.loads(resp.read().decode())
-                if resp_data.get("choices"):
-                    print(f"    [ok]     {mid}")
-                else:
-                    print(f"    [ok]     {mid}  (no choices)")
-        except urllib.error.HTTPError as e:
-            if e.code == 403:
-                print(f"    [locked] {mid}  (plan too low)")
-            elif e.code == 429:
-                print(f"    [ok]     {mid}  (rate limited - accessible)")
-            elif e.code == 400:
-                print(f"    [n/a]    {mid}  (not a chat model)")
-            else:
-                try:
-                    err_body = json.loads(e.read().decode())
-                    msg = err_body.get("error", {}).get("message", e.reason)
-                except Exception:
-                    msg = e.reason
-                print(f"    [err]    {mid}  (HTTP {e.code}: {msg})")
-        except urllib.error.URLError:
-            print(f"    [err]    {mid}  (unreachable)")
-        except Exception:
-            print(f"    [err]    {mid}  (unknown error)")
-        # Brief pause to avoid hammering rate limits
-        import time
-        time.sleep(0.5)
+        has_access = mid.lower() in {x.lower() for x in plan_set} if plan_set else None
+        entry = {
+            "id": mid,
+            "source": m.get("source", "api"),
+            "created": m.get("created"),
+            "access": has_access,
+        }
+        if has_access is True:
+            accessible.append(entry)
+        elif has_access is False:
+            not_accessible.append(entry)
+        else:
+            # No plan detected, list all as unknown
+            accessible.append(entry)
+
+    # Show accessible models
+    for e in accessible:
+        mid = e["id"]
+        tag = ""
+        if e["source"] == "plan":
+            tag = " *"
+        date_str = ""
+        if e["created"]:
+            try:
+                date_str = datetime.fromtimestamp(e["created"], tz=SGT).strftime("%Y-%m-%d")
+            except (OSError, ValueError):
+                pass
+        access = "[ok]     "
+        print(f"    {access} {mid:<16} {date_str}{tag}")
+
+    # Show models on higher plans
+    if not_accessible:
+        print(f"\n  Available on higher plans:")
+        for e in not_accessible:
+            mid = e["id"]
+            # Find which plan has this
+            for pk, pmodels in PLAN_MODELS.items():
+                if mid.lower() in {x.lower() for x in pmodels}:
+                    upgrade = plan_map.get(pk, pk)
+                    print(f"    [locked] {mid:<16} requires {upgrade}")
+                    break
+
+    print(f"\n  Total: {len(models)} models")
+    if plan_set:
+        print(f"  {len(accessible)} accessible on your plan, {len(not_accessible)} require upgrade")
+    else:
+        print("  * Not returned by /v4/models API, known from plan")
+
+    return models
 
 
 def print_quota(data: dict):
@@ -311,17 +318,19 @@ def main():
         sys.exit(1)
 
     if args.models:
-        data = fetch_json(api_key, MODELS_ENDPOINTS, args.endpoint)
+        # Fetch both models list and quota (for plan detection)
+        models_data = fetch_json(api_key, MODELS_ENDPOINTS, args.endpoint)
+        try:
+            quota_data = fetch_json(api_key, QUOTA_ENDPOINTS, args.endpoint)
+            plan = quota_data.get("data", quota_data).get("level", "")
+        except SystemExit:
+            plan = ""
+
         if args.json:
-            # Merge known models into JSON output too
-            merged = build_model_list(data)
+            merged = build_model_list(models_data, plan)
             print(json.dumps(merged, indent=2))
         else:
-            models = print_models(data)
-            if models:
-                print("\n  Quick availability check...")
-                print("  " + "-" * 40)
-                quick_test_models(api_key, models, args.endpoint)
+            print_models(models_data, plan)
     else:
         data = fetch_json(api_key, QUOTA_ENDPOINTS, args.endpoint)
         if args.json:
