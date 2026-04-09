@@ -49,6 +49,9 @@ python3 zai_quota.py --key "your_api_key_here"
 # JSON output
 python3 zai_quota.py --json
 
+# List supported models + availability check
+python3 zai_quota.py --models
+
 # Force a specific endpoint
 python3 zai_quota.py --endpoint cn     # China (open.bigmodel.cn)
 python3 zai_quota.py --endpoint intl   # International (api.z.ai)
