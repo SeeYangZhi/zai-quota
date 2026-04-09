@@ -161,33 +161,23 @@ def print_models(models_data: dict):
     # Sort by tier (newest first), then alphabetically
     def sort_key(m):
         mid = m.get("id", "")
-        tier = model_tier_label(mid)
-        return tier
+        return model_tier_label(mid)
 
     models_sorted = sorted(models, key=sort_key)
-
-    # Group by tier
-    tiers = {}
-    for m in models_sorted:
-        mid = m.get("id", "")
-        tier = model_tier_label(mid)
-        tiers.setdefault(tier, []).append(m)
 
     print("  Z.ai GLM Models")
     print("  " + "-" * 37)
 
-    for tier in sorted(tiers.keys(), reverse=True):
-        group = tiers[tier]
-        for m in group:
-            mid = m.get("id", "unknown")
-            created = m.get("created")
-            date_str = ""
-            if created:
-                try:
-                    date_str = datetime.fromtimestamp(created, tz=SGT).strftime("%Y-%m-%d")
-                except (OSError, ValueError):
-                    pass
-            print(f"    {mid:<20} GLM-{tier:<6} {date_str}")
+    for m in models_sorted:
+        mid = m.get("id", "unknown")
+        created = m.get("created")
+        date_str = ""
+        if created:
+            try:
+                date_str = datetime.fromtimestamp(created, tz=SGT).strftime("%Y-%m-%d")
+            except (OSError, ValueError):
+                pass
+        print(f"    {mid:<20} {date_str}")
 
     print(f"\n  Total: {len(models)} models")
 
